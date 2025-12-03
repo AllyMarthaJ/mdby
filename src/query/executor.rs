@@ -2,6 +2,7 @@
 
 use crate::storage::collection::Collection;
 use crate::storage::document::{Document, Value};
+use crate::validation::{validate_collection_name, validate_document_id, validate_view_name, validate_template_name};
 use crate::{Database, QueryResult};
 use mdql::{
     Column, CreateCollectionStmt, CreateViewStmt, DeleteStmt, InsertStmt,
@@ -25,6 +26,7 @@ pub async fn execute(db: &mut Database, stmt: Statement) -> anyhow::Result<Query
 }
 
 async fn execute_select(db: &Database, stmt: SelectStmt) -> anyhow::Result<QueryResult> {
+    validate_collection_name(&stmt.from)?;
     let collection = Collection::open(&stmt.from, &db.root);
 
     if !collection.exists().await {
@@ -80,6 +82,7 @@ async fn execute_select(db: &Database, stmt: SelectStmt) -> anyhow::Result<Query
 }
 
 async fn execute_insert(db: &Database, stmt: InsertStmt) -> anyhow::Result<QueryResult> {
+    validate_collection_name(&stmt.into)?;
     let collection = Collection::open(&stmt.into, &db.root);
     collection.ensure_exists().await?;
 
@@ -93,6 +96,7 @@ async fn execute_insert(db: &Database, stmt: InsertStmt) -> anyhow::Result<Query
         })
         .ok_or_else(|| anyhow::anyhow!("INSERT requires an 'id' column"))?;
 
+    validate_document_id(&id)?;
     let mut doc = Document::new(id);
 
     for (i, col) in stmt.columns.iter().enumerate() {
@@ -121,6 +125,7 @@ async fn execute_insert(db: &Database, stmt: InsertStmt) -> anyhow::Result<Query
 }
 
 async fn execute_update(db: &Database, stmt: UpdateStmt) -> anyhow::Result<QueryResult> {
+    validate_collection_name(&stmt.collection)?;
     let collection = Collection::open(&stmt.collection, &db.root);
 
     if !collection.exists().await {
@@ -153,6 +158,7 @@ async fn execute_update(db: &Database, stmt: UpdateStmt) -> anyhow::Result<Query
 }
 
 async fn execute_delete(db: &Database, stmt: DeleteStmt) -> anyhow::Result<QueryResult> {
+    validate_collection_name(&stmt.from)?;
     let collection = Collection::open(&stmt.from, &db.root);
 
     if !collection.exists().await {
@@ -181,6 +187,7 @@ async fn execute_delete(db: &Database, stmt: DeleteStmt) -> anyhow::Result<Query
 }
 
 async fn execute_create_collection(db: &mut Database, stmt: CreateCollectionStmt) -> anyhow::Result<QueryResult> {
+    validate_collection_name(&stmt.name)?;
     let collection = Collection::open(&stmt.name, &db.root);
 
     if collection.exists().await {
@@ -221,6 +228,14 @@ async fn execute_create_collection(db: &mut Database, stmt: CreateCollectionStmt
 }
 
 async fn execute_create_view(db: &Database, stmt: CreateViewStmt) -> anyhow::Result<QueryResult> {
+    validate_view_name(&stmt.name)?;
+    // Also validate the source collection
+    validate_collection_name(&stmt.query.from)?;
+    // Validate template if provided
+    if let Some(ref template) = stmt.template {
+        validate_template_name(template)?;
+    }
+
     // Views are stored in .mdby/views/{name}.yaml
     let view_path = db.root.join(".mdby").join("views");
     tokio::fs::create_dir_all(&view_path).await?;
@@ -246,6 +261,7 @@ async fn execute_create_view(db: &Database, stmt: CreateViewStmt) -> anyhow::Res
 }
 
 async fn execute_drop_collection(db: &Database, name: &str) -> anyhow::Result<QueryResult> {
+    validate_collection_name(name)?;
     let collection_path = db.root.join("collections").join(name);
 
     if !collection_path.exists() {
@@ -260,6 +276,7 @@ async fn execute_drop_collection(db: &Database, name: &str) -> anyhow::Result<Qu
 }
 
 async fn execute_drop_view(db: &Database, name: &str) -> anyhow::Result<QueryResult> {
+    validate_view_name(name)?;
     let view_file = db.root.join(".mdby").join("views").join(format!("{}.yaml", name));
 
     if !view_file.exists() {
@@ -300,7 +317,7 @@ fn project_columns(doc: &Document, columns: &[Column]) -> Document {
             Column::Special(_) => {
                 // Special fields are always available via the doc structure
             }
-            Column::Expr { alias, .. } => {
+            Column::Expr { alias: _, .. } => {
                 // TODO: Evaluate expression and add as alias
             }
         }

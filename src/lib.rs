@@ -42,11 +42,15 @@
 //! └─────────────────────────────────────────────────────────────────┘
 //! ```
 
+pub mod error;
 pub mod git;
 pub mod query;
 pub mod schema;
 pub mod storage;
+pub mod validation;
 pub mod views;
+
+pub use error::{Error, Result};
 
 use std::path::PathBuf;
 

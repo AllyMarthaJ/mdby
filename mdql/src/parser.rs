@@ -5,11 +5,11 @@
 use nom::{
     IResult,
     branch::alt,
-    bytes::complete::{tag, tag_no_case, take_while, take_while1, escaped_transform},
+    bytes::complete::{tag, tag_no_case, take_while1},
     character::complete::{char, multispace0, multispace1, digit1, none_of},
-    combinator::{map, opt, value, recognize, all_consuming, cut},
+    combinator::{map, opt, value},
     multi::{separated_list0, separated_list1, many0},
-    sequence::{delimited, pair, preceded, terminated, tuple},
+    sequence::{delimited, preceded, terminated, tuple},
 };
 
 use crate::ast::*;

@@ -21,6 +21,7 @@ enum ExprResult {
 }
 
 impl ExprResult {
+    #[allow(dead_code)]
     fn as_value(&self) -> Option<&Value> {
         match self {
             ExprResult::Value(v) => Some(v),
@@ -131,7 +132,7 @@ fn evaluate_expr(expr: &Expr, doc: &Document) -> ExprResult {
             ExprResult::Bool(if *negated { !in_range } else { in_range })
         }
 
-        Expr::Function { name, args } => {
+        Expr::Function { name: _, args: _ } => {
             // TODO: Implement built-in functions
             ExprResult::Null
         }

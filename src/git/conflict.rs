@@ -2,6 +2,11 @@
 //!
 //! When concurrent edits create conflicts, MDBY resolves them using
 //! document-aware merge strategies.
+//!
+//! Note: These functions are currently unused but will be integrated
+//! when git sync (push/pull) is implemented.
+
+#![allow(dead_code)]
 
 use crate::storage::document::Document;
 
