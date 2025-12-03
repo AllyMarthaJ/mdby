@@ -142,9 +142,20 @@ impl Document {
         self
     }
 
-    /// Get a field value
+    /// Get a field value from the fields map only
     pub fn get(&self, key: &str) -> Option<&Value> {
         self.fields.get(key)
+    }
+
+    /// Get any field value, including built-in properties (id, body, path)
+    /// Returns an owned Value since built-ins need to be constructed
+    pub fn get_field(&self, key: &str) -> Option<Value> {
+        match key {
+            "id" => Some(Value::String(self.id.clone())),
+            "body" => Some(Value::String(self.body.clone())),
+            "path" => Some(Value::String(self.path.display().to_string())),
+            _ => self.fields.get(key).cloned(),
+        }
     }
 
     /// Set the body content

@@ -47,8 +47,8 @@ fn evaluate_expr(expr: &Expr, doc: &Document) -> ExprResult {
             match col {
                 Column::Star => ExprResult::Null, // Can't evaluate * in a filter
                 Column::Field(name) => {
-                    doc.fields.get(name)
-                        .map(|v| ExprResult::Value(v.clone()))
+                    doc.get_field(name)
+                        .map(ExprResult::Value)
                         .unwrap_or(ExprResult::Null)
                 }
                 Column::Special(sf) => match sf {
