@@ -153,6 +153,45 @@ DROP COLLECTION todos
 DROP VIEW completed_tasks
 ```
 
+### JOIN
+
+Join documents from multiple collections:
+
+```sql
+-- Inner join (only matching rows)
+SELECT todos.title, users.name
+FROM todos
+JOIN users ON todos.user_id = users.id
+
+-- Left join (all from left, matching from right)
+SELECT todos.title, users.name
+FROM todos
+LEFT JOIN users ON todos.user_id = users.id
+
+-- With aliases (AS keyword required)
+SELECT t.title, u.name
+FROM todos AS t
+JOIN users AS u ON t.user_id = u.id
+
+-- Multiple joins
+SELECT t.title, u.name, p.name
+FROM todos AS t
+JOIN users AS u ON t.user_id = u.id
+JOIN projects AS p ON t.project_id = p.id
+```
+
+### SHOW
+
+List collections and views:
+
+```sql
+-- List all collections
+SHOW COLLECTIONS
+
+-- List all views
+SHOW VIEWS
+```
+
 ## Views
 
 Views are saved queries that can generate static output files.

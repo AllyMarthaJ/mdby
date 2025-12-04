@@ -63,6 +63,20 @@ fn statement(input: &str) -> IResult<&str, Statement> {
         map(create_view_stmt, Statement::CreateView),
         map(drop_collection_stmt, Statement::DropCollection),
         map(drop_view_stmt, Statement::DropView),
+        show_stmt,
+    ))(input)
+}
+
+// ============================================================================
+// SHOW
+// ============================================================================
+
+fn show_stmt(input: &str) -> IResult<&str, Statement> {
+    let (input, _) = tag_no_case("SHOW")(input)?;
+    let (input, _) = multispace1(input)?;
+    alt((
+        map(tag_no_case("COLLECTIONS"), |_| Statement::ShowCollections),
+        map(tag_no_case("VIEWS"), |_| Statement::ShowViews),
     ))(input)
 }
 
@@ -78,6 +92,8 @@ fn select_stmt(input: &str) -> IResult<&str, SelectStmt> {
     let (input, _) = tag_no_case("FROM")(input)?;
     let (input, _) = multispace1(input)?;
     let (input, from) = identifier(input)?;
+    let (input, from_alias) = opt(table_alias)(input)?;
+    let (input, joins) = many0(join_clause)(input)?;
     let (input, where_clause) = opt(preceded(
         tuple((multispace1, tag_no_case("WHERE"), multispace1)),
         expr,
@@ -98,10 +114,46 @@ fn select_stmt(input: &str) -> IResult<&str, SelectStmt> {
     Ok((input, SelectStmt {
         columns,
         from: from.to_string(),
+        from_alias: from_alias.map(String::from),
+        joins,
         where_clause,
         order_by: order_by.unwrap_or_default(),
         limit,
         offset,
+    }))
+}
+
+/// Parse a table alias - must use AS keyword to avoid ambiguity with WHERE/JOIN/etc.
+fn table_alias(input: &str) -> IResult<&str, &str> {
+    preceded(
+        tuple((multispace1, tag_no_case("AS"), multispace1)),
+        identifier,
+    )(input)
+}
+
+fn join_clause(input: &str) -> IResult<&str, JoinClause> {
+    let (input, _) = multispace1(input)?;
+    let (input, join_type) = alt((
+        value(JoinType::Inner, tuple((tag_no_case("INNER"), multispace1, tag_no_case("JOIN")))),
+        value(JoinType::Left, tuple((tag_no_case("LEFT"), multispace1, tag_no_case("JOIN")))),
+        value(JoinType::Left, tuple((tag_no_case("LEFT"), multispace1, tag_no_case("OUTER"), multispace1, tag_no_case("JOIN")))),
+        value(JoinType::Right, tuple((tag_no_case("RIGHT"), multispace1, tag_no_case("JOIN")))),
+        value(JoinType::Right, tuple((tag_no_case("RIGHT"), multispace1, tag_no_case("OUTER"), multispace1, tag_no_case("JOIN")))),
+        value(JoinType::Inner, tag_no_case("JOIN")),
+    ))(input)?;
+    let (input, _) = multispace1(input)?;
+    let (input, collection) = identifier(input)?;
+    let (input, alias) = opt(table_alias)(input)?;
+    let (input, _) = multispace1(input)?;
+    let (input, _) = tag_no_case("ON")(input)?;
+    let (input, _) = multispace1(input)?;
+    let (input, on) = expr(input)?;
+
+    Ok((input, JoinClause {
+        join_type,
+        collection: collection.to_string(),
+        alias: alias.map(String::from),
+        on,
     }))
 }
 
@@ -119,8 +171,19 @@ fn column(input: &str) -> IResult<&str, Column> {
     alt((
         map(char('*'), |_| Column::Star),
         map(special_field, Column::Special),
+        qualified_column,
         map(identifier, |s| Column::Field(s.to_string())),
     ))(input)
+}
+
+fn qualified_column(input: &str) -> IResult<&str, Column> {
+    let (input, table) = identifier(input)?;
+    let (input, _) = char('.')(input)?;
+    let (input, field) = identifier(input)?;
+    Ok((input, Column::Qualified {
+        table: table.to_string(),
+        field: field.to_string(),
+    }))
 }
 
 fn special_field(input: &str) -> IResult<&str, SpecialField> {
@@ -588,6 +651,7 @@ fn primary_expr(input: &str) -> IResult<&str, Expr> {
         ),
         map(literal, Expr::Literal),
         map(special_field, |sf| Expr::Column(Column::Special(sf))),
+        map(qualified_column, Expr::Column),
         map(identifier, |s| Expr::Column(Column::Field(s.to_string()))),
     ))(input)
 }
@@ -744,6 +808,66 @@ mod tests {
         let stmt = parse_statement("SELECT * FROM todos WHERE HAS TAG 'urgent'").unwrap();
         if let Statement::Select(s) = stmt {
             assert!(matches!(s.where_clause, Some(Expr::HasTag { .. })));
+        } else {
+            panic!("Expected Select");
+        }
+    }
+
+    #[test]
+    fn test_parse_show_collections() {
+        let stmt = parse_statement("SHOW COLLECTIONS").unwrap();
+        assert!(matches!(stmt, Statement::ShowCollections));
+    }
+
+    #[test]
+    fn test_parse_show_views() {
+        let stmt = parse_statement("SHOW VIEWS").unwrap();
+        assert!(matches!(stmt, Statement::ShowViews));
+    }
+
+    #[test]
+    fn test_parse_inner_join() {
+        let stmt = parse_statement("SELECT * FROM todos JOIN users ON todos.user_id = users.id").unwrap();
+        if let Statement::Select(s) = stmt {
+            assert_eq!(s.from, "todos");
+            assert_eq!(s.joins.len(), 1);
+            assert_eq!(s.joins[0].collection, "users");
+            assert!(matches!(s.joins[0].join_type, JoinType::Inner));
+        } else {
+            panic!("Expected Select");
+        }
+    }
+
+    #[test]
+    fn test_parse_left_join() {
+        let stmt = parse_statement("SELECT * FROM todos LEFT JOIN users ON todos.user_id = users.id").unwrap();
+        if let Statement::Select(s) = stmt {
+            assert_eq!(s.joins.len(), 1);
+            assert!(matches!(s.joins[0].join_type, JoinType::Left));
+        } else {
+            panic!("Expected Select");
+        }
+    }
+
+    #[test]
+    fn test_parse_join_with_alias() {
+        let stmt = parse_statement("SELECT t.title, u.name FROM todos AS t JOIN users AS u ON t.user_id = u.id").unwrap();
+        if let Statement::Select(s) = stmt {
+            assert_eq!(s.from, "todos");
+            assert_eq!(s.from_alias, Some("t".to_string()));
+            assert_eq!(s.joins[0].alias, Some("u".to_string()));
+        } else {
+            panic!("Expected Select");
+        }
+    }
+
+    #[test]
+    fn test_parse_qualified_column() {
+        let stmt = parse_statement("SELECT todos.title, users.name FROM todos JOIN users ON todos.user_id = users.id").unwrap();
+        if let Statement::Select(s) = stmt {
+            assert_eq!(s.columns.len(), 2);
+            assert!(matches!(&s.columns[0], Column::Qualified { table, field } if table == "todos" && field == "title"));
+            assert!(matches!(&s.columns[1], Column::Qualified { table, field } if table == "users" && field == "name"));
         } else {
             panic!("Expected Select");
         }

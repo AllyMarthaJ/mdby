@@ -13,6 +13,8 @@ pub enum Statement {
     CreateView(CreateViewStmt),
     DropCollection(String),
     DropView(String),
+    ShowCollections,
+    ShowViews,
 }
 
 /// SELECT statement
@@ -22,6 +24,10 @@ pub struct SelectStmt {
     pub columns: Vec<Column>,
     /// Collection to select from
     pub from: String,
+    /// Optional alias for the from collection
+    pub from_alias: Option<String>,
+    /// JOIN clauses
+    pub joins: Vec<JoinClause>,
     /// Optional WHERE clause
     pub where_clause: Option<Expr>,
     /// ORDER BY clauses
@@ -32,6 +38,30 @@ pub struct SelectStmt {
     pub offset: Option<usize>,
 }
 
+/// JOIN clause
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct JoinClause {
+    /// Type of join
+    pub join_type: JoinType,
+    /// Collection to join
+    pub collection: String,
+    /// Optional alias for joined collection
+    pub alias: Option<String>,
+    /// JOIN condition (ON clause)
+    pub on: Expr,
+}
+
+/// Types of JOINs
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum JoinType {
+    /// INNER JOIN - only matching rows
+    Inner,
+    /// LEFT JOIN - all from left, matching from right
+    Left,
+    /// RIGHT JOIN - all from right, matching from left
+    Right,
+}
+
 /// A column reference
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum Column {
@@ -39,6 +69,8 @@ pub enum Column {
     Star,
     /// Named field
     Field(String),
+    /// Qualified field (collection.field or alias.field)
+    Qualified { table: String, field: String },
     /// Special fields (@body, @id, @path)
     Special(SpecialField),
     /// Expression with alias
@@ -271,6 +303,8 @@ impl SelectStmt {
         Self {
             columns: vec![Column::Star],
             from: from.into(),
+            from_alias: None,
+            joins: vec![],
             where_clause: None,
             order_by: vec![],
             limit: None,

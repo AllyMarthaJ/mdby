@@ -52,6 +52,12 @@ fn evaluate_expr(expr: &Expr, doc: &Document) -> ExprResult {
                         .map(ExprResult::Value)
                         .unwrap_or(ExprResult::Null)
                 }
+                Column::Qualified { table: _, field } => {
+                    // For non-join queries, just use the field name
+                    doc.get_field(field)
+                        .map(ExprResult::Value)
+                        .unwrap_or(ExprResult::Null)
+                }
                 Column::Special(sf) => match sf {
                     SpecialField::Id => ExprResult::Value(Value::String(doc.id.clone())),
                     SpecialField::Body => ExprResult::Value(Value::String(doc.body.clone())),

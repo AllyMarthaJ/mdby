@@ -171,9 +171,39 @@ async fn execute_query(path: &PathBuf, query: &str, format: OutputFormat) -> any
                 }
             }
         }
+        QueryResult::Collections(names) => {
+            print_list("Collections", &names, format);
+        }
+        QueryResult::Views(names) => {
+            print_list("Views", &names, format);
+        }
     }
 
     Ok(())
+}
+
+fn print_list(label: &str, items: &[String], format: OutputFormat) {
+    match format {
+        OutputFormat::Json => {
+            println!("{}", serde_json::to_string_pretty(&items).unwrap_or_default());
+        }
+        OutputFormat::Table => {
+            if items.is_empty() {
+                println!("No {} found.", label.to_lowercase());
+            } else {
+                println!("{}:", label);
+                for name in items {
+                    println!("  {}", name);
+                }
+                println!("\n({} total)", items.len());
+            }
+        }
+        OutputFormat::Minimal => {
+            for name in items {
+                println!("{}", name);
+            }
+        }
+    }
 }
 
 fn print_documents(docs: &[Document], format: OutputFormat) {
@@ -359,6 +389,12 @@ async fn run_repl(path: &PathBuf) -> anyhow::Result<()> {
                 QueryResult::Affected(n) => println!("({} row(s) affected)", n),
                 QueryResult::CollectionCreated(name) => println!("Collection '{}' created", name),
                 QueryResult::ViewCreated(name) => println!("View '{}' created", name),
+                QueryResult::Collections(names) => {
+                    print_list("Collections", &names, OutputFormat::Table);
+                }
+                QueryResult::Views(names) => {
+                    print_list("Views", &names, OutputFormat::Table);
+                }
             },
             Err(e) => {
                 eprintln!("Error: {}", e);

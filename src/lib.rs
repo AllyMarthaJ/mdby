@@ -111,6 +111,10 @@ pub enum QueryResult {
     ViewCreated(String),
     /// Collection created
     CollectionCreated(String),
+    /// List of collection names (from SHOW COLLECTIONS)
+    Collections(Vec<String>),
+    /// List of view names (from SHOW VIEWS)
+    Views(Vec<String>),
 }
 
 /// Result of a sync operation

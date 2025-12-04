@@ -22,6 +22,8 @@ pub async fn execute(db: &mut Database, stmt: Statement) -> anyhow::Result<Query
         Statement::CreateView(create) => execute_create_view(db, create).await,
         Statement::DropCollection(name) => execute_drop_collection(db, &name).await,
         Statement::DropView(name) => execute_drop_view(db, &name).await,
+        Statement::ShowCollections => execute_show_collections(db).await,
+        Statement::ShowViews => execute_show_views(db).await,
     }
 }
 
@@ -296,6 +298,45 @@ async fn execute_drop_view(db: &Database, name: &str) -> anyhow::Result<QueryRes
     Ok(QueryResult::Affected(1))
 }
 
+async fn execute_show_collections(db: &Database) -> anyhow::Result<QueryResult> {
+    let collections_path = db.root.join("collections");
+    let mut collections = Vec::new();
+
+    if collections_path.exists() {
+        let mut entries = tokio::fs::read_dir(&collections_path).await?;
+        while let Some(entry) = entries.next_entry().await? {
+            if entry.file_type().await?.is_dir() {
+                if let Some(name) = entry.file_name().to_str() {
+                    collections.push(name.to_string());
+                }
+            }
+        }
+    }
+
+    collections.sort();
+    Ok(QueryResult::Collections(collections))
+}
+
+async fn execute_show_views(db: &Database) -> anyhow::Result<QueryResult> {
+    let views_path = db.root.join(".mdby").join("views");
+    let mut views = Vec::new();
+
+    if views_path.exists() {
+        let mut entries = tokio::fs::read_dir(&views_path).await?;
+        while let Some(entry) = entries.next_entry().await? {
+            let path = entry.path();
+            if path.extension().map(|e| e == "yaml").unwrap_or(false) {
+                if let Some(stem) = path.file_stem().and_then(|s| s.to_str()) {
+                    views.push(stem.to_string());
+                }
+            }
+        }
+    }
+
+    views.sort();
+    Ok(QueryResult::Views(views))
+}
+
 // Helper functions
 
 fn project_columns(doc: &Document, columns: &[Column]) -> Document {
@@ -312,6 +353,12 @@ fn project_columns(doc: &Document, columns: &[Column]) -> Document {
             Column::Field(name) => {
                 if let Some(val) = doc.fields.get(name) {
                     result.fields.insert(name.clone(), val.clone());
+                }
+            }
+            Column::Qualified { table: _, field } => {
+                // For non-join queries, just use the field name
+                if let Some(val) = doc.fields.get(field) {
+                    result.fields.insert(field.clone(), val.clone());
                 }
             }
             Column::Special(_) => {

@@ -584,3 +584,62 @@ async fn test_schema_type_validation_date_field() {
     let result = db.execute("INSERT INTO events (id, title, event_date) VALUES ('event-2', 'Party', 'next tuesday')").await;
     assert!(result.is_err());
 }
+
+// =============================================================================
+// SHOW Commands Tests
+// =============================================================================
+
+#[tokio::test]
+async fn test_show_collections() {
+    let (_tmp, mut db) = setup_test_db().await;
+
+    // Initially empty
+    let result = exec(&mut db, "SHOW COLLECTIONS").await;
+    if let QueryResult::Collections(names) = result {
+        assert!(names.is_empty());
+    } else {
+        panic!("Expected Collections result");
+    }
+
+    // Create some collections
+    exec(&mut db, "CREATE COLLECTION todos").await;
+    exec(&mut db, "CREATE COLLECTION users").await;
+    exec(&mut db, "CREATE COLLECTION projects").await;
+
+    // Should list all collections
+    let result = exec(&mut db, "SHOW COLLECTIONS").await;
+    if let QueryResult::Collections(names) = result {
+        assert_eq!(names.len(), 3);
+        assert!(names.contains(&"todos".to_string()));
+        assert!(names.contains(&"users".to_string()));
+        assert!(names.contains(&"projects".to_string()));
+    } else {
+        panic!("Expected Collections result");
+    }
+}
+
+#[tokio::test]
+async fn test_show_views() {
+    let (_tmp, mut db) = setup_test_db().await;
+
+    // Initially empty
+    let result = exec(&mut db, "SHOW VIEWS").await;
+    if let QueryResult::Views(names) = result {
+        assert!(names.is_empty());
+    } else {
+        panic!("Expected Views result");
+    }
+
+    // Create a collection and view
+    exec(&mut db, "CREATE COLLECTION todos").await;
+    exec(&mut db, "CREATE VIEW active AS SELECT * FROM todos").await;
+
+    // Should list the view
+    let result = exec(&mut db, "SHOW VIEWS").await;
+    if let QueryResult::Views(names) = result {
+        assert_eq!(names.len(), 1);
+        assert!(names.contains(&"active".to_string()));
+    } else {
+        panic!("Expected Views result");
+    }
+}
